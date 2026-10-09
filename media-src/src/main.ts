@@ -276,7 +276,13 @@ window.addEventListener('message', (e) => {
         }
         console.log('initVditor')
       } else {
-        vditor.setValue(msg.content)
+        // Skip setValue (which resets the cursor to the top) when the content
+        // hasn't actually changed. Autosave can cause the extension host to push
+        // the same content back to the webview; without this guard the cursor
+        // jumps to the beginning of the document on every save.
+        if (vditor.getValue() !== msg.content) {
+          vditor.setValue(msg.content)
+        }
         console.log('setValue')
       }
       break

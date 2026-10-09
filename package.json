@@ -1,10 +1,10 @@
 {
-  "name": "markdown-editor",
+  "name": "md-editor",
   "displayName": "Markdown Editor",
   "icon": "media/logo.png",
   "description": "A full-featured WYSIWYG editor for markdown.",
   "version": "0.1.21",
-  "publisher": "zaaack",
+  "publisher": "Iman",
   "private": true,
   "engines": {
     "vscode": "^1.47.0"
@@ -113,6 +113,7 @@
     "watch": "foy watch",
     "start": "foy watch",
     "build": "tsc -p ./ && pnpm --filter media-src build",
+    "package": "foy build && vsce package",
     "pub": "foy build && npm version patch && vsce package && vsce publish && ovsx publish && git push origin main --tags"
   },
   "devDependencies": {

@@ -383,6 +383,12 @@ class EditorPanel {
     // This happens when the user closes the panel or when the panel is closed programmatically
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables)
     let textEditTimer: NodeJS.Timeout | void
+    // Last content pushed from the webview into the document. Used to detect
+    // save-triggered onDidChangeTextDocument events that carry the same (or
+    // save-normalized) text we just wrote, so we don't echo it back and reset
+    // the editor cursor. See isExternalReload for why contentChanges alone is
+    // not enough.
+    let lastWebviewContent: string | undefined
     // close EditorPanel when vsc editor is close
     vscode.workspace.onDidCloseTextDocument((e) => {
       if (e.fileName === this._fsPath) {
@@ -408,6 +414,16 @@ class EditorPanel {
       if (this._panel.active && !isExternalReload(e)) {
         return
       }
+      // Don't push the same content the webview just sent us back into the
+      // webview. Autosave can fire onDidChangeTextDocument with contentChanges
+      // on a clean document (e.g. when files.trimTrailingWhitespace /
+      // files.insertFinalNewline / editor.formatOnSave rewrite the file during
+      // save), which isExternalReload can't distinguish from a real external
+      // reload. Comparing the actual text filters that out without losing
+      // genuine external edits.
+      if (this._document && this._document.getText() === lastWebviewContent) {
+        return
+      }
       textEditTimer && clearTimeout(textEditTimer)
       textEditTimer = setTimeout(() => {
         this._update()
@@ -420,6 +436,7 @@ class EditorPanel {
         debug('msg from webview review', message, this._panel.active)
 
         const syncToEditor = async () => {
+          lastWebviewContent = message.content
           debug('sync to editor', this._document, this._uri)
           if (this._document) {
             const edit = new vscode.WorkspaceEdit()
@@ -665,6 +682,12 @@ class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
     const disposables: vscode.Disposable[] = []
     let isEditing = false
+    // Last content pushed from the webview into the document. Used to detect
+    // save-triggered onDidChangeTextDocument events that carry the same (or
+    // save-normalized) text we just wrote, so we don't echo it back and reset
+    // the editor cursor. See isExternalReload for why contentChanges alone is
+    // not enough.
+    let lastWebviewContent: string | undefined
 
     // Update title to show edit status
     const updateEditTitle = () => {
@@ -704,6 +727,16 @@ class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       if (webviewPanel.active && !isExternalReload(e)) {
         return
       }
+      // Don't push the same content the webview just sent us back into the
+      // webview. Autosave can fire onDidChangeTextDocument with contentChanges
+      // on a clean document (e.g. when files.trimTrailingWhitespace /
+      // files.insertFinalNewline / editor.formatOnSave rewrite the file during
+      // save), which isExternalReload can't distinguish from a real external
+      // reload. Comparing the actual text filters that out without losing
+      // genuine external edits.
+      if (document.getText() === lastWebviewContent) {
+        return
+      }
       updateWebview()
       updateEditTitle()
     }, null, disposables)
@@ -713,6 +746,7 @@ class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
       debug('msg from webview', message, webviewPanel.active)
 
       const syncToEditor = async () => {
+        lastWebviewContent = message.content
         const edit = new vscode.WorkspaceEdit()
         edit.replace(
           document.uri,
