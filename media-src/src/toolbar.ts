@@ -7,9 +7,10 @@ const tableWrapIcon = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/sv
 // behavior; defaults to off (i.e. cells wrap, matching VS Code's markdown preview).
 let tableWrapDisabled = false
 
-export const toolbar = [
+export function buildToolbar(shortcutsEnabled: boolean) {
+  return [
 	{
-		hotkey: '⌘s',
+		hotkey: shortcutsEnabled ? '⌘s' : undefined,
 		name: 'save',
 		tipPosition: 's',
 		tip: t('save'),
@@ -64,7 +65,7 @@ export const toolbar = [
 	{
 		name: 'find',
 		tipPosition: 's',
-		tip: 'Find (Ctrl+F)',
+		tip: shortcutsEnabled ? 'Find (Ctrl+F)' : 'Find',
 		icon: searchIcon,
 		click() {
 			;(window as any).__vmdSearch?.open()
@@ -147,10 +148,11 @@ export const toolbar = [
 			'help',
 		],
 	},
-].map((it: any) => {
+  ].map((it: any) => {
 	if (typeof it === 'string') {
 		it = { name: it }
 	}
 	it.tipPosition = it.tipPosition || 's'
 	return it
-})
+  })
+}

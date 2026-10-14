@@ -15,7 +15,7 @@ import Vditor from 'vditor'
 import { format } from 'date-fns'
 import 'vditor/dist/index.css'
 import { t, lang } from './lang'
-import { toolbar } from './toolbar'
+import { buildToolbar } from './toolbar'
 import { fixTableIr } from './fix-table-ir'
 import { initSearch } from './search'
 import './main.css'
@@ -162,8 +162,72 @@ function restoreScrollPosition(scrollTop: number) {
   }, POLL_MS)
 }
 
+// Whether Vditor's keyboard shortcuts (Ctrl/Cmd+B, Ctrl/Cmd+I, etc.) are
+// enabled. Toggled by the `markdown-editor.enableShortcuts` VS Code setting.
+// When disabled, Vditor's toolbar hotkey definitions are cleared so its
+// hotkey matcher (matchHotKey) never fires. This lets keydown events propagate
+// normally through the DOM to window, where VS Code's webview prelude script
+// (handleInnerKeydown) forwards them to the extension host for keybinding
+// resolution — including chord shortcuts like cmd+e cmd+w.
+let shortcutsEnabled = true
+
+/**
+ * Clears the `hotkey` property from every toolbar item in vditor's internal
+ * options.toolbar (including submenu items). Vditor's hotkeyEvent() reads
+ * menuItem.hotkey at event time (not at registration time), so this takes
+ * effect immediately.
+ *
+ * Note: the Vditor *instance* (window.vditor) has an internal `vditor` property
+ * that holds the actual options — window.vditor.vditor.options.toolbar is the
+ * array that hotkeyEvent reads. Accessing window.vditor.options directly
+ * returns undefined because `options` lives on the internal object, not on the
+ * Vditor prototype.
+ *
+ * matchHotKey("", event) returns false (hotKey.ts line 3), and the keydown
+ * handler in editorCommonEvent.ts also short-circuits on !menuItem.hotkey
+ * (line 210), so setting hotkey to "" fully disables the shortcut.
+ */
+function clearVditorHotkeys() {
+  // window.vditor is the Vditor instance; .vditor is its internal state object
+  const internal = (window as any).vditor?.vditor
+  const toolbar = internal?.options?.toolbar
+  if (!Array.isArray(toolbar)) return
+  const clear = (items: any[]) => {
+    for (const item of items) {
+      if (item && typeof item === 'object') {
+        item.hotkey = ''
+        if (Array.isArray(item.toolbar)) {
+          clear(item.toolbar)
+        }
+      }
+    }
+  }
+  clear(toolbar)
+}
+
+/**
+ * Strips keyboard-shortcut hints (e.g. "<⌘B>") from Vditor's built-in toolbar
+ * tooltips. Vditor appends the hotkey to each item's aria-label (top-level
+ * buttons) or innerHTML (submenu items) in MenuItem.ts. Custom items are
+ * already handled via buildToolbar(), so this only needs to clean up the
+ * built-in items whose hotkeys come from Vditor's internal Options.ts.
+ */
+function stripToolbarHotkeys() {
+  // Top-level toolbar buttons: aria-label is "Tip <hotkey>"
+  document.querySelectorAll<HTMLElement>('.vditor-toolbar .vditor-tooltipped[aria-label]').forEach((el) => {
+    el.setAttribute('aria-label', el.getAttribute('aria-label')!.replace(/\s+<[^>]+>$/, ''))
+  })
+  // Submenu panel buttons: hotkey is embedded as " &lt;hotkey&gt;" in innerHTML
+  document.querySelectorAll<HTMLElement>('.vditor-panel button').forEach((el) => {
+    el.innerHTML = el.innerHTML.replace(/\s+&lt;[^&]+&gt;$/, '')
+  })
+}
+
 function initVditor(msg) {
   console.log('msg', msg)
+  // Update the shortcut-blocking flag from the latest VS Code settings. This
+  // runs on every (re)init so toggling the setting takes effect immediately.
+  shortcutsEnabled = msg.options?.enableShortcuts !== false
   // Hide the editor again for the duration of this (re)build - see main.css and the
   // matching reveal at the end of after() below. Needed on every call, not just the
   // first: a re-init can also happen without a full page reload (e.g. a VS Code theme
@@ -201,7 +265,7 @@ function initVditor(msg) {
     value: msg.content,
     mode: 'ir',
     cache: { enable: false },
-    toolbar,
+    toolbar: buildToolbar(shortcutsEnabled),
     toolbarConfig: { pin: true },
     ...defaultOptions,
     after() {
@@ -209,6 +273,16 @@ function initVditor(msg) {
       handleToolbarClick()
       fixTableIr()
       fixPanelHover()
+      // Disable Vditor's keyboard shortcuts when the setting is off. We clear
+      // the hotkey definitions from vditor.options.toolbar (which hotkeyEvent
+      // reads at event time) so Vditor's matchHotKey never matches. Unlike the
+      // old stopPropagation approach, this lets keydown events propagate
+      // normally to window, where VS Code's webview prelude forwards them to
+      // the extension host for keybinding resolution (including chords).
+      if (!shortcutsEnabled) {
+        clearVditorHotkeys()
+        stripToolbarHotkeys()
+      }
       vditor.focus()
       // Initialize search bar once (idempotent across vditor re-inits)
       if (!(window as any).__vmdSearch) {

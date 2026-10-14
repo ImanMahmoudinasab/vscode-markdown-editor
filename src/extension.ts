@@ -243,6 +243,9 @@ class EditorPanel {
       showLineNumbers: EditorPanel.config.get<boolean>(
         'showLineNumbers'
       ),
+      enableShortcuts: EditorPanel.config.get<boolean>(
+        'enableShortcuts'
+      ),
       outline: {
         enable: EditorPanel.config.get<boolean>(
           'defaultOpenOutline'
@@ -402,6 +405,20 @@ class EditorPanel {
         options: EditorPanel.getVditorOptions(this._context),
         theme: theme.kind === vscode.ColorThemeKind.Dark ? 'dark' : 'light',
       })
+    }, null, this._disposables)
+    // re-init webview when extension settings change
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('markdown-editor')) {
+        this._update({
+          type: 'init',
+          options: EditorPanel.getVditorOptions(this._context),
+          theme:
+            vscode.window.activeColorTheme.kind ===
+            vscode.ColorThemeKind.Dark
+              ? 'dark'
+              : 'light',
+        })
+      }
     }, null, this._disposables)
     // update EditorPanel when vsc editor changes
     vscode.workspace.onDidChangeTextDocument((e) => {
@@ -714,6 +731,17 @@ class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     vscode.workspace.onDidCloseTextDocument((e) => {
       if (e.fileName === uri.fsPath) {
         webviewPanel.dispose()
+      }
+    }, null, disposables)
+
+    // Re-init webview when extension settings change
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('markdown-editor')) {
+        updateWebview({
+          type: 'init',
+          options: EditorPanel.getVditorOptions(this.context),
+          theme: vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ? 'dark' : 'light',
+        })
       }
     }, null, disposables)
 
